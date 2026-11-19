@@ -1,0 +1,414 @@
+# Walk-through of the service, one request per endpoint, run against the local demo (see "Run it" in the README):
+# the fake Graph server on :5103 and the API on :5102, both with the Development settings.
+# Syntax: VS Code "REST Client" / JetBrains HTTP client. Run the requests top to bottom.
+# Each request states the status code it returns when the walk-through is followed in order, and where to wait
+# for the dispatcher, the fake's webhooks or the reconciler first.
+#
+# A webhook signature (X-Hub-Signature-256) cannot be written by hand, so every SIGNED webhook in this file is
+# posted by the fake Graph server: inbound messages through POST {{graph}}/_inspect/inbound, status receipts
+# automatically after each message it accepts. The only hand-written webhook calls are the handshake and a
+# deliberately unsigned delivery.
+#
+# The keys and secrets below are the demo values of appsettings.Development.json. They are not secrets.
+
+@api = http://localhost:5102
+@graph = http://localhost:5103
+@tenantKey = dev-only-tenant-a-key-not-a-secret
+@adminKey = dev-only-admin-key-not-a-secret
+@expiredTenantKey = dev-only-tenant-expired-key-not-a-secret
+@disabledTenantKey = dev-only-tenant-disabled-key-not-a-secret
+@verifyToken = dev-only-verify-token-not-a-secret
+@phoneNumberId = 100200300
+@recipient = +12025550100
+@otherRecipient = +12025550143
+
+### 1. Liveness. Expect: 200
+GET {{api}}/health/live
+
+### 2. Readiness: checks the database and the dispatcher. Expect: 200
+GET {{api}}/health/ready
+
+### 3. The OpenAPI contract, behind the same API key. Expect: 200
+GET {{api}}/openapi/v1.json
+X-Api-Key: {{adminKey}}
+
+### 4. Start clean: forget what the fake Graph server received and posted. Expect: 204
+DELETE {{graph}}/_inspect/messages
+
+### 5. Remove failure rules left over from an earlier run. Expect: 204
+DELETE {{graph}}/_inspect/failures
+
+### 6. Remove outcome rules left over from an earlier run. Expect: 204
+DELETE {{graph}}/_inspect/outcomes
+
+### 7. A booking is created. The event is queued, never sent inline. Expect: 202
+POST {{api}}/api/v1/events/booking-created
+X-Api-Key: {{tenantKey}}
+X-Correlation-Id: demo-booking-created
+Content-Type: application/json
+
+{
+  "bookingId": "bk-1001",
+  "reference": "REF-1001",
+  "customerFirstName": "Sam",
+  "phoneCountryCallingCode": "1",
+  "phoneNationalNumber": "2025550100",
+  "bookingType": "Hotel",
+  "status": "Confirmed",
+  "details": { "checkInDate": "2026-03-14" },
+  "companyName": "Acme Travel",
+  "createdAt": "2026-03-01T09:30:00Z",
+  "preferredLanguage": "en",
+  "whatsappUpdatesEnabled": true
+}
+
+### 8. Give the dispatcher a moment (wait 2 seconds), then look at what the fake Graph server received. Expect: 200 (one template message)
+GET {{graph}}/_inspect/messages
+
+### 9. The same event again. Expect: 202 (accepted, but nothing new is queued)
+POST {{api}}/api/v1/events/booking-created
+X-Api-Key: {{tenantKey}}
+Content-Type: application/json
+
+{
+  "bookingId": "bk-1001",
+  "reference": "REF-1001",
+  "customerFirstName": "Sam",
+  "phoneCountryCallingCode": "1",
+  "phoneNationalNumber": "2025550100",
+  "bookingType": "Hotel",
+  "status": "Confirmed",
+  "details": { "checkInDate": "2026-03-14" },
+  "companyName": "Acme Travel",
+  "createdAt": "2026-03-01T09:30:00Z",
+  "preferredLanguage": "en",
+  "whatsappUpdatesEnabled": true
+}
+
+### 10. Still exactly one message at the fake Graph server. Expect: 200
+GET {{graph}}/_inspect/messages
+
+### 11. Delivery receipts: the fake posted signed sent, delivered and read webhooks. Filter by delivery status (wait 4 seconds). Expect: 200
+# @name readList
+GET {{api}}/api/v1/notifications?deliveryStatus=Read
+X-Api-Key: {{adminKey}}
+
+### 12. One notification with its receipt timeline and derived delivery status. Expect: 200
+GET {{api}}/api/v1/notifications/{{readList.response.body.$.items[0].id}}
+X-Api-Key: {{tenantKey}}
+
+### 13. A status change. Expect: 202
+POST {{api}}/api/v1/events/booking-status-changed
+X-Api-Key: {{tenantKey}}
+Content-Type: application/json
+
+{
+  "bookingId": "bk-1001",
+  "reference": "REF-1001",
+  "customerFirstName": "Sam",
+  "phoneCountryCallingCode": "1",
+  "phoneNationalNumber": "2025550100",
+  "bookingType": "Hotel",
+  "status": "ConfirmedPendingPayment",
+  "details": { "checkInDate": "2026-03-14" },
+  "companyName": "Acme Travel",
+  "createdAt": "2026-03-01T09:30:00Z",
+  "preferredLanguage": "ar",
+  "whatsappUpdatesEnabled": true
+}
+
+### 14. A custom free-text notification. No inbound message yet, so the 24 hour window is closed. Expect: 202
+# @name freeTextClosed
+POST {{api}}/api/v1/notifications
+X-Api-Key: {{tenantKey}}
+Content-Type: application/json
+
+{
+  "recipient": "{{otherRecipient}}",
+  "kind": "FreeText",
+  "eventKey": "order-update",
+  "referenceKey": "order-1",
+  "text": "Hi, your order is ready for pickup."
+}
+
+### 15. The same request again. Expect: 200 (duplicate: true, same id)
+POST {{api}}/api/v1/notifications
+X-Api-Key: {{tenantKey}}
+Content-Type: application/json
+
+{
+  "recipient": "{{otherRecipient}}",
+  "kind": "FreeText",
+  "eventKey": "order-update",
+  "referenceKey": "order-1",
+  "text": "Hi, your order is ready for pickup."
+}
+
+### 16. Read it back (wait 2 seconds): Skipped with the reason "window closed". Expect: 200
+GET {{api}}/api/v1/notifications/{{freeTextClosed.response.body.$.id}}
+X-Api-Key: {{tenantKey}}
+
+### 17. A customer writes to the business number. The fake posts a SIGNED inbound webhook to the service, which opens the 24 hour window through the real webhook path. Expect: 200
+POST {{graph}}/_inspect/inbound
+Content-Type: application/json
+
+{
+  "from": "{{recipient}}",
+  "phoneNumberId": "{{phoneNumberId}}",
+  "text": "Hello, is my booking confirmed?"
+}
+
+### 18. DEMO ONLY: the admin shortcut feeds the same recorder as the webhook, so it has the same effect. Expect: 200
+POST {{api}}/api/v1/admin/conversations/inbound
+X-Api-Key: {{adminKey}}
+Content-Type: application/json
+
+{
+  "tenantId": "tenant-a",
+  "recipient": "{{recipient}}"
+}
+
+### 19. Free text is now allowed. Expect: 202
+# @name freeTextOpen
+POST {{api}}/api/v1/notifications
+X-Api-Key: {{tenantKey}}
+Content-Type: application/json
+
+{
+  "recipient": "{{recipient}}",
+  "kind": "FreeText",
+  "eventKey": "order-update",
+  "referenceKey": "order-2",
+  "textVariants": {
+    "en": "Hi {name}, your order is ready for pickup.",
+    "ar": "مرحباً {name}، طلبك جاهز للاستلام."
+  },
+  "placeholders": { "name": "Sam" },
+  "preferredLanguage": "en"
+}
+
+### 20. Delivered as text this time (wait 2 seconds). Expect: 200
+GET {{graph}}/_inspect/messages?to=%2B12025550100
+
+### 21. Free text with a template fallback: sent as a template when the window is closed. Expect: 202
+POST {{api}}/api/v1/notifications
+X-Api-Key: {{tenantKey}}
+Content-Type: application/json
+
+{
+  "recipient": "{{otherRecipient}}",
+  "kind": "FreeText",
+  "eventKey": "order-update",
+  "referenceKey": "order-3",
+  "text": "Your booking is confirmed.",
+  "template": {
+    "name": "booking_status_updated",
+    "parameters": ["Sam", "REF-1001", "Confirmed"]
+  }
+}
+
+### 22. The webhook handshake: the verify token matches, so the challenge is echoed as plain text. Expect: 200
+GET {{api}}/api/v1/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token={{verifyToken}}&hub.challenge=1158201444
+
+### 23. The handshake with a wrong token. Expect: 403
+GET {{api}}/api/v1/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=not-the-token&hub.challenge=1158201444
+
+### 24. A delivery without a valid signature is turned away before anything is read from it. Expect: 401
+POST {{api}}/api/v1/webhooks/whatsapp
+Content-Type: application/json
+
+{ "object": "whatsapp_business_account", "entry": [] }
+
+### 25. What the fake posted to the webhook, and how the service answered. Expect: 200
+GET {{graph}}/_inspect/webhooks
+
+### 26. Failure injection: the next request to the fake Graph server is rejected as an invalid recipient. Expect: 201
+POST {{graph}}/_inspect/failures
+Content-Type: application/json
+
+{ "mode": "invalid-recipient", "remaining": 1, "recipient": "{{recipient}}" }
+
+### 27. A template notification that will hit the injected failure. Expect: 202
+# @name doomed
+POST {{api}}/api/v1/notifications
+X-Api-Key: {{tenantKey}}
+Content-Type: application/json
+
+{
+  "recipient": "{{recipient}}",
+  "kind": "Template",
+  "eventKey": "order-update",
+  "referenceKey": "order-4",
+  "template": {
+    "name": "booking_status_updated",
+    "languageCode": "en",
+    "parameters": ["Sam", "REF-1001", "Cancelled"]
+  }
+}
+
+### 28. Permanent error (wait 2 seconds): the row is dead-lettered, not retried. Expect: 200 (status DeadLettered)
+GET {{api}}/api/v1/notifications/{{doomed.response.body.$.id}}
+X-Api-Key: {{adminKey}}
+
+### 29. An admin retries it. Expect: 202
+POST {{api}}/api/v1/notifications/{{doomed.response.body.$.id}}/retry
+X-Api-Key: {{adminKey}}
+
+### 30. This time it goes through (wait 2 seconds). Expect: 200 (status Sent)
+GET {{api}}/api/v1/notifications/{{doomed.response.body.$.id}}
+X-Api-Key: {{adminKey}}
+
+### 31. Retrying something that is not failed is refused (it is Sent). Expect: 409
+POST {{api}}/api/v1/notifications/{{doomed.response.body.$.id}}/retry
+X-Api-Key: {{adminKey}}
+
+### 32. A tenant whose token has expired: permanent error with its own kind. Expect: 202
+# @name expired
+POST {{api}}/api/v1/notifications
+X-Api-Key: {{expiredTenantKey}}
+Content-Type: application/json
+
+{
+  "recipient": "{{recipient}}",
+  "kind": "Template",
+  "eventKey": "order-update",
+  "referenceKey": "order-5",
+  "template": {
+    "name": "booking_status_updated",
+    "languageCode": "en",
+    "parameters": ["Sam", "REF-1001", "Confirmed"]
+  }
+}
+
+### 33. DeadLettered with a TokenExpired error (wait 2 seconds). Expect: 200
+GET {{api}}/api/v1/notifications/{{expired.response.body.$.id}}
+X-Api-Key: {{adminKey}}
+
+### 34. A disabled tenant is skipped, not failed. Expect: 202
+POST {{api}}/api/v1/events/booking-created
+X-Api-Key: {{disabledTenantKey}}
+Content-Type: application/json
+
+{
+  "bookingId": "bk-2001",
+  "reference": "REF-2001",
+  "customerFirstName": "Alex",
+  "phoneCountryCallingCode": "1",
+  "phoneNationalNumber": "(212) 555-0143",
+  "bookingType": "Flight",
+  "status": "Confirmed",
+  "details": {
+    "departureAt": "2026-04-02T08:30:00Z",
+    "origin": "AAA",
+    "destination": "BBB"
+  },
+  "companyName": "Acme Travel",
+  "createdAt": "2026-03-01T09:30:00Z",
+  "whatsappUpdatesEnabled": true
+}
+
+### 35. A failed receipt: the fake reports the next message to this number as undeliverable. Expect: 201
+POST {{graph}}/_inspect/outcomes
+Content-Type: application/json
+
+{ "recipient": "{{recipient}}", "final": "failed", "errorCode": 131026, "errorTitle": "Message undeliverable", "remaining": 1 }
+
+### 36. A template notification to that number. Expect: 202
+# @name undeliverable
+POST {{api}}/api/v1/notifications
+X-Api-Key: {{tenantKey}}
+Content-Type: application/json
+
+{
+  "recipient": "{{recipient}}",
+  "kind": "Template",
+  "eventKey": "order-update",
+  "referenceKey": "order-6",
+  "template": {
+    "name": "booking_status_updated",
+    "languageCode": "en",
+    "parameters": ["Sam", "REF-1001", "Confirmed"]
+  }
+}
+
+### 37. The provider accepted it and then reported a failure (wait 5 seconds): Failed, with the reason, and not sent again. Expect: 200
+GET {{api}}/api/v1/notifications/{{undeliverable.response.body.$.id}}
+X-Api-Key: {{tenantKey}}
+
+### 38. Crash after accept: the next message to this number is accepted by the fake, but the connection drops before the answer. Expect: 201
+POST {{graph}}/_inspect/failures
+Content-Type: application/json
+
+{ "mode": "drop-after-accept", "remaining": 1, "recipient": "{{otherRecipient}}" }
+
+### 39. ... and the fake sends no receipts for it. Expect: 201
+POST {{graph}}/_inspect/outcomes
+Content-Type: application/json
+
+{ "recipient": "{{otherRecipient}}", "final": "none", "remaining": 1 }
+
+### 40. A template notification to that number. Expect: 202
+# @name dropped
+POST {{api}}/api/v1/notifications
+X-Api-Key: {{tenantKey}}
+Content-Type: application/json
+
+{
+  "recipient": "{{otherRecipient}}",
+  "kind": "Template",
+  "eventKey": "order-update",
+  "referenceKey": "order-7",
+  "template": {
+    "name": "booking_status_updated",
+    "languageCode": "en",
+    "parameters": ["Sam", "REF-1001", "Confirmed"]
+  }
+}
+
+### 41. The service cannot know whether the message was sent (wait 3 seconds): Unconfirmed, and it is not sent again. Expect: 200
+GET {{api}}/api/v1/notifications/{{dropped.response.body.$.id}}
+X-Api-Key: {{adminKey}}
+
+### 42. After the grace period (15 seconds in the Development settings) with no receipt, the default policy dead-letters it for a human to decide (wait 17 seconds). Expect: 200 (status DeadLettered, error starts with "unconfirmed")
+GET {{api}}/api/v1/notifications/{{dropped.response.body.$.id}}
+X-Api-Key: {{adminKey}}
+
+### 43. An admin retries it. Expect: 202
+POST {{api}}/api/v1/notifications/{{dropped.response.body.$.id}}/retry
+X-Api-Key: {{adminKey}}
+
+### 44. Sent this time (wait 2 seconds). Expect: 200
+GET {{api}}/api/v1/notifications/{{dropped.response.body.$.id}}
+X-Api-Key: {{adminKey}}
+
+### 45. All notifications, newest first (admin). Filter with status, recipient, tenantId, deliveryStatus, page, pageSize. Expect: 200
+GET {{api}}/api/v1/notifications?pageSize=50
+X-Api-Key: {{adminKey}}
+
+### 46. Only the skipped ones. Expect: 200
+GET {{api}}/api/v1/notifications?status=Skipped
+X-Api-Key: {{adminKey}}
+
+### 47. Only the ones the provider reported as failed. Expect: 200
+GET {{api}}/api/v1/notifications?deliveryStatus=Failed
+X-Api-Key: {{adminKey}}
+
+### 48. A tenant key cannot use admin routes. Expect: 403
+GET {{api}}/api/v1/notifications
+X-Api-Key: {{tenantKey}}
+
+### 49. No key at all. Expect: 401
+GET {{api}}/api/v1/notifications/00000000-0000-0000-0000-000000000000
+
+### 50. Validation errors are RFC 7807 problem documents. Expect: 400
+POST {{api}}/api/v1/notifications
+X-Api-Key: {{tenantKey}}
+Content-Type: application/json
+
+{
+  "recipient": "12",
+  "kind": "Template",
+  "eventKey": "order-update",
+  "referenceKey": "order-8",
+  "template": { "name": "booking_status_updated", "parameters": ["only one"] }
+}

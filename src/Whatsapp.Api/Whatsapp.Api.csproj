@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>Whatsapp.Api</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Whatsapp.Abstractions\Whatsapp.Abstractions.csproj" />
+    <ProjectReference Include="..\Whatsapp.CloudApi\Whatsapp.CloudApi.csproj" />
+    <ProjectReference Include="..\Whatsapp.Templates\Whatsapp.Templates.csproj" />
+    <ProjectReference Include="..\Whatsapp.Outbox\Whatsapp.Outbox.csproj" />
+    <ProjectReference Include="..\Whatsapp.Events\Whatsapp.Events.csproj" />
+    <ProjectReference Include="..\Whatsapp.Webhooks\Whatsapp.Webhooks.csproj" />
+  </ItemGroup>
+</Project>

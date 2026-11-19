@@ -1,0 +1,81 @@
+# The fake Graph server of the local demo. It stands in for the real Cloud API: it validates what it receives, records
+# everything, can be told to fail, and (when configured with a callback URL and an app secret) posts signed webhooks
+# to the service. Syntax: VS Code "REST Client" / JetBrains HTTP client.
+
+@graph = http://localhost:5103
+
+### 1. Messages the fake server accepted (optionally only for one recipient). Expect: 200
+GET {{graph}}/_inspect/messages
+# GET {{graph}}/_inspect/messages?to=%2B12025550100
+
+### 2. Every request it received, including rejected ones, with the outcome. Expect: 200
+GET {{graph}}/_inspect/requests
+
+### 3. Fail the next two requests with a server error (transient: the service retries). Expect: 201
+# Modes: rate-limit, server-error, service-unavailable, invalid-recipient, template-not-found,
+#        token-expired, outside-window, parameter-mismatch, drop-after-accept.
+# Optional fields: "recipient" (only fail requests to that number), "retryAfterSeconds" (for rate-limit).
+# drop-after-accept records the message as accepted, posts its status webhooks, and then breaks the connection
+# before the answer: the caller sees a network failure although the message was accepted.
+POST {{graph}}/_inspect/failures
+Content-Type: application/json
+
+{ "mode": "server-error", "remaining": 2 }
+
+### 4. Active failure rules. Expect: 200
+GET {{graph}}/_inspect/failures
+
+### 5. Remove all failure rules. Expect: 204
+DELETE {{graph}}/_inspect/failures
+
+### 6. How the next accepted messages to a number end. Expect: 201
+# final: read (sent, delivered, read: the default), delivered, sent, failed (with errorCode and errorTitle), none (no webhook).
+# "remaining" limits the rule to that many messages. Without it the rule stays until it is deleted.
+POST {{graph}}/_inspect/outcomes
+Content-Type: application/json
+
+{ "recipient": "+12025550100", "final": "failed", "errorCode": 131047, "errorTitle": "Re-engagement message", "remaining": 1 }
+
+### 7. Active outcome rules. Expect: 200
+GET {{graph}}/_inspect/outcomes
+
+### 8. Remove all outcome rules. Expect: 204
+DELETE {{graph}}/_inspect/outcomes
+
+### 9. A customer writes to the business number: the fake posts a signed inbound message webhook to the service. Expect: 200
+# phoneNumberId selects the tenant that owns the number. The answer reports what the service replied.
+POST {{graph}}/_inspect/inbound
+Content-Type: application/json
+
+{ "from": "+12025550100", "phoneNumberId": "100200300", "text": "Hello" }
+
+### 10. Every webhook the fake posted, with the HTTP status the service answered. Expect: 200
+GET {{graph}}/_inspect/webhooks
+
+### 11. Forget the recorded requests and webhooks. Expect: 204
+DELETE {{graph}}/_inspect/messages
+
+### 12. The Graph-style send endpoint itself, called directly: the demo token is accepted. Expect: 200
+POST {{graph}}/v1/100200300/messages
+Authorization: Bearer dev-only-fake-access-token
+Content-Type: application/json
+
+{
+  "messaging_product": "whatsapp",
+  "to": "+12025550100",
+  "type": "text",
+  "text": { "body": "Hello from a direct call" },
+  "biz_opaque_callback_data": "demo-callback-data"
+}
+
+### 13. A token the fake server reports as expired. Expect: 401
+POST {{graph}}/v1/100200300/messages
+Authorization: Bearer dev-only-expired-token
+Content-Type: application/json
+
+{
+  "messaging_product": "whatsapp",
+  "to": "+12025550100",
+  "type": "text",
+  "text": { "body": "Hello" }
+}
