@@ -1,0 +1,28 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "109876543210",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": { "display_phone_number": "15555550100", "phone_number_id": "100200300" },
+            "statuses": [
+              {
+                "id": "wamid.OUTBOUND-1",
+                "status": "sent",
+                "timestamp": "1772359201",
+                "recipient_id": "12025550100",
+                "biz_opaque_callback_data": "11111111-2222-3333-4444-555555555555",
+                "conversation": { "id": "conv-1", "origin": { "type": "utility" } },
+                "pricing": { "billable": true, "pricing_model": "CBP", "category": "utility" }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

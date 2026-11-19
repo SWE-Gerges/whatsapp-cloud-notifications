@@ -1,0 +1,42 @@
+{
+  "object": "whatsapp_business_account",
+  "some_new_top_level_field": { "nested": [1, 2, 3] },
+  "entry": [
+    {
+      "id": "109876543210",
+      "time": 1772359300,
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": { "display_phone_number": "15555550100", "phone_number_id": "100200300", "a_future_metadata_field": true },
+            "messages": [
+              {
+                "from": "12025550100",
+                "id": "wamid.INBOUND-HOLOGRAM-1",
+                "timestamp": 1772359320,
+                "type": "hologram",
+                "hologram": { "depth": 3, "frames": [ { "n": 1 }, { "n": 2 } ] },
+                "context": { "forwarded": true }
+              },
+              "not an object",
+              { "id": "wamid.NO-SENDER", "timestamp": "1772359321", "type": "text" },
+              {
+                "from": "12025550100",
+                "id": "wamid.INBOUND-REACTION-1",
+                "timestamp": "1772359330",
+                "type": "reaction",
+                "reaction": { "message_id": "wamid.SOMETHING", "emoji": "x" }
+              }
+            ]
+          },
+          "field": "messages"
+        },
+        {
+          "value": { "event": "something_unrelated", "message_template_id": 42 },
+          "field": "message_template_status_update"
+        }
+      ]
+    }
+  ]
+}

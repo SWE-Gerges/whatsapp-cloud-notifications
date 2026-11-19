@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Whatsapp.Abstractions/Whatsapp.Abstractions.csproj" />
+    <Project Path="src/Whatsapp.CloudApi/Whatsapp.CloudApi.csproj" />
+    <Project Path="src/Whatsapp.Templates/Whatsapp.Templates.csproj" />
+    <Project Path="src/Whatsapp.Outbox/Whatsapp.Outbox.csproj" />
+    <Project Path="src/Whatsapp.Events/Whatsapp.Events.csproj" />
+    <Project Path="src/Whatsapp.Webhooks/Whatsapp.Webhooks.csproj" />
+    <Project Path="src/Whatsapp.Api/Whatsapp.Api.csproj" />
+    <Project Path="src/Whatsapp.FakeGraph/Whatsapp.FakeGraph.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Whatsapp.Tests/Whatsapp.Tests.csproj" />
+    <Project Path="tests/Whatsapp.IntegrationTests/Whatsapp.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

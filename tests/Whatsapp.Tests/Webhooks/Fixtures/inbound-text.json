@@ -1,0 +1,27 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "109876543210",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": { "display_phone_number": "15555550100", "phone_number_id": "100200300" },
+            "contacts": [ { "profile": { "name": "Sam" }, "wa_id": "12025550100" } ],
+            "messages": [
+              {
+                "from": "12025550100",
+                "id": "wamid.INBOUND-TEXT-1",
+                "timestamp": "1772359200",
+                "text": { "body": "Hello, is my booking confirmed?" },
+                "type": "text"
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
