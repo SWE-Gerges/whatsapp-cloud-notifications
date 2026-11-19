@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Whatsapp.Events</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MediatR" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Whatsapp.Abstractions\Whatsapp.Abstractions.csproj" />
+    <ProjectReference Include="..\Whatsapp.Templates\Whatsapp.Templates.csproj" />
+  </ItemGroup>
+</Project>
