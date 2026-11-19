@@ -1,0 +1,14 @@
+bin/
+obj/
+.vs/
+.idea/
+TestResults/
+node_modules/
+*.user
+.env
+*.local.json
+*.suo
+*.DotSettings.user
+*.db
+*.db-shm
+*.db-wal
