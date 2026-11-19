@@ -1,0 +1,45 @@
+name: ci
+
+# Build, test and contract checks. Nothing here deploys anything or needs a secret, and nothing needs a container:
+# the tests use SQLite files, an in-process fake Graph server and a fake clock.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (warnings are errors)
+        run: dotnet build --no-restore --configuration Release -warnaserror
+
+      - name: Unit tests
+        run: dotnet test --no-build --configuration Release --filter "Category!=Integration"
+
+      - name: Integration tests (the whole service against the fake Graph server, on SQLite)
+        run: dotnet test --no-build --configuration Release --filter "Category=Integration"
+
+      - name: OpenAPI snapshot (docs/openapi.json matches the generated document)
+        run: dotnet test --no-build --configuration Release --filter "FullyQualifiedName~OpenApiSnapshotTests"
+
+      - name: Migrations (the committed model snapshot matches the model)
+        run: dotnet test --no-build --configuration Release --filter "FullyQualifiedName~MigrationTests"
