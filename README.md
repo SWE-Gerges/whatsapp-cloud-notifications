@@ -277,7 +277,7 @@ Short records in [`docs/adr`](docs/adr):
   statement text is tested), applying the committed migrations at startup, the existence probe that precedes them, and a
   check that a fresh start logs no error-level line. They are written for PostgreSQL and checked for model drift
   (`MigrationTests`), nothing more.
-- **CI is written, not run.** `.github/workflows/ci.yml` has not been executed on a runner.
+- **CI runs the same in-process tests.** `.github/workflows/ci.yml` runs on every push to `main` and every pull request (`ubuntu-latest`) and passed on its first run. It does not start PostgreSQL, so the PostgreSQL paths above stay unverified there too.
 - **No media or interactive messages.** The template catalogue is configuration, not synchronised with the templates
   approved in the business account.
 - **A customer's `wa_id` can differ from the number you hold** in some countries, in which case the window opens for a key
